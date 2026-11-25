@@ -1,0 +1,1895 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMART COB MPHS • Bahagian Pesuruhjaya Bangunan</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 3px solid #166534;
+            width: 28px;
+            height: 28px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .hero-gradient {
+            background: linear-gradient(125deg, #0b2419 0%, #166534 55%, #15803d 100%);
+        }
+        .glass-pill {
+            background: rgba(255, 255, 255, 0.14);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.22);
+        }
+    </style>
+</head>
+<body class="text-gray-800 antialiased selection:bg-green-700 selection:text-white">
+
+    <!-- Container Utama -->
+    <div id="app" class="min-h-screen flex flex-col">
+        <div class="flex-1 flex flex-col items-center justify-center p-6">
+            <div class="loader mb-4"></div>
+            <p class="text-gray-600 font-medium">Memuatkan SMART COB MPHS...</p>
+        </div>
+    </div>
+
+    <!-- Container Modal -->
+    <div id="modal-container"></div>
+
+    <!-- Container Notifikasi (Toast) -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm"></div>
+
+    <!-- Logik SMART COB MPHS -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, addDoc, updateDoc, deleteDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // =========================================================================
+        // KONFIGURASI RASMI SMART COB MPHS
+        // =========================================================================
+        const DEFAULT_LOGO_FILE = "VECTOR LOGO RASMI MPHS - 21102021(LOGO FINAL).jpg";
+        const FALLBACK_MPHS_LOGO = "https://lh3.googleusercontent.com/gg/AJWXcNd-jEPg2aF1tEPRrcPdQuKwPkHiVu6LE4yPDyJJgA2EWj88hNKtViIDC4y77oMvIIOEisSMH4jtj2PfngSh-O1Z0HW4lQ4sTkf_JFis4M-ymOKliTPNlFwaPySyouA0JIt_RgrK7Dpuejcp_HX3zflpe0VUt77wcQ0w4SOUmFAmbRruTDMFZkIuI2iHo6Z5upki4Mu9Z3HpS6SZwOpJveCbQkGHVJe5J_AmNyzc5TDqkqSYjJ7M2PY-aadrN_eQrlsy2ViMrReDfazQhmod4-hKZh9Fp6d9MIA=s0";
+        let OFFICIAL_MPHS_LOGO = localStorage.getItem('esmart_cob_custom_logo') || DEFAULT_LOGO_FILE;
+        const DEPARTMENT_EMAIL = "cob@mphs.gov.my";
+
+        const STORAGE_KEYS = {
+            USERS: 'esmart_cob_users_v2',
+            LETTERS: 'esmart_cob_letters_v2',
+            ANNOUNCEMENTS: 'esmart_cob_announcements_v2',
+            SESSION: 'esmart_cob_session'
+        };
+
+        const MONTH_NAMES = {
+            '01': 'Januari', '02': 'Februari', '03': 'Mac', '04': 'April',
+            '05': 'Mei', '06': 'Jun', '07': 'Julai', '08': 'Ogos',
+            '09': 'September', '10': 'Oktober', '11': 'November', '12': 'Disember'
+        };
+
+        const DELIVERY_METHODS = [
+            'Serahan Tangan',
+            'Pos Berdaftar',
+            'Pos Biasa',
+            'Emel Rasmi',
+            'Kurier',
+            'Kaunter COB'
+        ];
+
+        // Data Lalai Pegawai
+        const DEFAULT_USERS = [
+            {
+                id: 'usr-admin',
+                name: 'Pentadbir Sistem COB',
+                username: 'admin',
+                password: '123',
+                position: 'Pentadbir Sistem (Mod Admin)',
+                email: 'admin.cob@mphs.gov.my',
+                role: 'admin'
+            },
+            {
+                id: 'usr-hod',
+                name: 'Tuan Haji Ahmad Razak',
+                username: 'ketua',
+                password: '123',
+                position: 'Ketua Bahagian COB',
+                email: 'ketua.cob@mphs.gov.my',
+                role: 'hod'
+            },
+            {
+                id: 'usr-1',
+                name: 'En. Muhammad Hafiz',
+                username: 'hafiz',
+                password: '123',
+                position: 'Penolong Pegawai Tadbir (COB)',
+                email: 'hafiz.cob@mphs.gov.my',
+                role: 'officer'
+            },
+            {
+                id: 'usr-2',
+                name: 'Pn. Nurul Aisyah',
+                username: 'aisyah',
+                password: '123',
+                position: 'Pembantu Tadbir Kanan (COB)',
+                email: 'aisyah.cob@mphs.gov.my',
+                role: 'officer'
+            }
+        ];
+
+        // Data Lalai Surat & Notis
+        const DEFAULT_LETTERS = [
+            {
+                id: 'srt-2026-001',
+                docCategory: 'Surat',
+                type: 'Masuk',
+                deliveryMethod: 'Serahan Tangan',
+                refNo: 'MPHS/COB/2026/12/001',
+                subject: 'Permohonan Kelulusan Mesyuarat Agung Tahunan (AGM) JMB Residensi Bukit Sentosa',
+                senderReceiver: 'JMB Residensi Bukit Sentosa',
+                dateReceived: '2026-12-01',
+                slaDays: 14,
+                deadlineDate: '2026-12-21',
+                officer: 'En. Muhammad Hafiz',
+                officerEmail: 'hafiz.cob@mphs.gov.my',
+                status: 'Dalam Tindakan',
+                minute: 'Sila semak penyata kewangan teraudit dan jadual notis AGM dalam tempoh piagam.',
+                fileName: 'Permohonan_AGM_JMB_BukitSentosa.pdf',
+                fileType: 'application/pdf',
+                fileSize: '1.2 MB',
+                fileData: null,
+                createdAt: '2026-12-01T08:30:00.000Z'
+            },
+            {
+                id: 'srt-2026-002',
+                docCategory: 'Notis',
+                type: 'Keluar',
+                deliveryMethod: 'Pos Berdaftar',
+                refNo: 'MPHS/COB/NOTIS/2026/12/002',
+                subject: 'Notis Peringatan Penyerahan Akaun Teraudit Tahunan di Bawah Akta 757',
+                senderReceiver: 'MC Pangsapuri Teratai Rawang',
+                dateReceived: '2026-12-02',
+                slaDays: 21,
+                deadlineDate: '2026-12-23',
+                officer: 'Pn. Nurul Aisyah',
+                officerEmail: 'aisyah.cob@mphs.gov.my',
+                status: 'Baru Diterima',
+                minute: 'Pastikan bukti penerimaan Pos Berdaftar direkodkan untuk pemfailan.',
+                fileName: 'Notis_Akta757_Teratai.pdf',
+                fileType: 'application/pdf',
+                fileSize: '840 KB',
+                fileData: null,
+                createdAt: '2026-12-02T10:15:00.000Z'
+            },
+            {
+                id: 'srt-2026-003',
+                docCategory: 'Surat',
+                type: 'Masuk',
+                deliveryMethod: 'Emel Rasmi',
+                refNo: 'MPHS/COB/2026/12/003',
+                subject: 'Aduan Kebocoran Paip Utama & Penyelenggaraan Lif Blok B',
+                senderReceiver: 'Penduduk & JMB Pangsapuri Anggerik',
+                dateReceived: '2026-11-10',
+                slaDays: 14,
+                deadlineDate: '2026-11-30',
+                officer: 'En. Muhammad Hafiz',
+                officerEmail: 'hafiz.cob@mphs.gov.my',
+                status: 'Dalam Tindakan',
+                minute: 'Lawatan tapak bersama jurutera bangunan dijadualkan minggu ini.',
+                fileName: 'Aduan_Kebocoran_Anggerik.jpg',
+                fileType: 'image/jpeg',
+                fileSize: '620 KB',
+                fileData: null,
+                createdAt: '2026-11-10T09:00:00.000Z'
+            },
+            {
+                id: 'srt-2026-004',
+                docCategory: 'Surat',
+                type: 'Keluar',
+                deliveryMethod: 'Kaunter COB',
+                refNo: 'MPHS/COB/2026/12/004',
+                subject: 'Sijil Perakuan Penubuhan Badan Pengurusan Bersama (JMB) Taman Bernam',
+                senderReceiver: 'JMB Taman Bernam Jaya',
+                dateReceived: '2026-12-03',
+                slaDays: 0,
+                deadlineDate: null,
+                officer: 'Pn. Nurul Aisyah',
+                officerEmail: 'aisyah.cob@mphs.gov.my',
+                status: 'Selesai',
+                minute: 'Sijil telah diambil oleh Pengerusi JMB di kaunter COB.',
+                fileName: 'Sijil_JMB_TamanBernam.pdf',
+                fileType: 'application/pdf',
+                fileSize: '510 KB',
+                fileData: null,
+                createdAt: '2026-12-03T14:20:00.000Z'
+            }
+        ];
+
+        // Data Lalai Hebahan Poster & Dokumen Rasmi
+        const DEFAULT_ANNOUNCEMENTS = [
+            {
+                id: 'ann-001',
+                title: 'Pekeliling Pelaksanaan SMART COB MPHS Bermula Disember 2026',
+                category: 'Pekeliling Jabatan',
+                summary: 'Semua pendaftaran surat masuk, notis rasmi, kaedah penyampaian, dan pemantauan piagam pelanggan hendaklah direkodkan sepenuhnya dalam SMART COB MPHS bermula 1 Disember 2026.',
+                fileName: 'Pekeliling_Pelaksanaan_SMART_COB_Dis2026.pdf',
+                fileType: 'application/pdf',
+                fileSize: '980 KB',
+                fileData: null,
+                postedBy: 'Ketua Bahagian COB',
+                postedAt: '01 Dis 2026',
+                createdById: 'usr-hod'
+            },
+            {
+                id: 'ann-002',
+                title: 'Poster Panduan Pematuhan Piagam Pelanggan & Notifikasi Gmail COB',
+                category: 'Poster Infografik',
+                summary: 'Panduan ringkas 3 langkah untuk pegawai COB mendaftar surat/notis, memantau amaran piagam pelanggan, dan menghantar notifikasi terus melalui Chrome Gmail dengan salinan CC kepada cob@mphs.gov.my.',
+                fileName: 'Poster_Panduan_SMART_COB.jpg',
+                fileType: 'image/jpeg',
+                fileSize: '1.4 MB',
+                fileData: null,
+                postedBy: 'Pentadbir Sistem COB',
+                postedAt: '02 Dis 2026',
+                createdById: 'usr-admin'
+            }
+        ];
+
+        // =========================================================================
+        // KEADAAN APLIKASI (STATE)
+        // =========================================================================
+        let app = null;
+        let auth = null;
+        let db = null;
+        let appId = typeof __app_id !== 'undefined' ? __app_id : 'smart-cob-mphs';
+        let isLocalMode = true;
+
+        let users = [];
+        let letters = [];
+        let announcements = [];
+        let currentUser = null;
+
+        let activeTab = 'dashboard';
+        let activeYearTab = 'ALL';
+        let activeMonthTab = 'ALL';
+        let filterDocCategory = 'ALL';
+        let filterType = 'ALL';
+        let filterStatus = 'ALL';
+        let searchQuery = '';
+
+        let selectedAnnouncementId = null;
+        let pendingAnnouncementFile = null;
+        let pendingLetterFile = null;
+        const pdfBlobUrlCache = new Map();
+
+        // =========================================================================
+        // FUNGSI UTILITI & KESELAMATAN
+        // =========================================================================
+        function escapeHtml(str) {
+            return String(str ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function formatFileSize(bytes) {
+            if (!bytes || isNaN(bytes)) return '-';
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+            const styles = {
+                success: 'bg-green-800 text-white border-green-700',
+                error: 'bg-red-700 text-white border-red-600',
+                warning: 'bg-amber-500 text-gray-950 border-amber-400',
+                info: 'bg-slate-800 text-white border-slate-700'
+            };
+            const icons = {
+                success: 'fa-circle-check',
+                error: 'fa-circle-exclamation',
+                warning: 'fa-triangle-exclamation',
+                info: 'fa-circle-info'
+            };
+            const toast = document.createElement('div');
+            toast.className = `px-4 py-3 rounded-xl shadow-xl border text-xs sm:text-sm font-semibold flex items-center gap-2.5 transition-all duration-300 ${styles[type] || styles.info}`;
+            toast.innerHTML = `<i class="fa-solid ${icons[type] || icons.info} text-base shrink-0"></i><span>${escapeHtml(message)}</span>`;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(8px)';
+                setTimeout(() => toast.remove(), 300);
+            }, 3800);
+        }
+
+        window.closeModal = function() {
+            const modalContainer = document.getElementById('modal-container');
+            if (modalContainer) modalContainer.innerHTML = '';
+        };
+
+        function getPdfBlobUrl(id, dataUrl) {
+            if (!dataUrl) return null;
+            if (pdfBlobUrlCache.has(id)) return pdfBlobUrlCache.get(id);
+            try {
+                const parts = dataUrl.split(',');
+                const mimeMatch = parts[0].match(/:(.*?);/);
+                const mime = mimeMatch ? mimeMatch[1] : 'application/pdf';
+                const binary = atob(parts[1]);
+                const len = binary.length;
+                const bytes = new Uint8Array(len);
+                for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+                const blobUrl = URL.createObjectURL(new Blob([bytes], { type: mime }));
+                pdfBlobUrlCache.set(id, blobUrl);
+                return blobUrl;
+            } catch (err) {
+                return dataUrl;
+            }
+        }
+
+        function getLogoImgTag(extraClass = "max-w-full max-h-full w-auto h-auto object-contain mx-auto block") {
+            return `
+                <div class="w-full h-full flex items-center justify-center">
+                    <img src="${OFFICIAL_MPHS_LOGO}" referrerpolicy="no-referrer" alt="Logo Rasmi MPHS" class="${extraClass}"
+                        onerror="if(!this.dataset.triedFallback){this.dataset.triedFallback='1';this.src='${FALLBACK_MPHS_LOGO}';}else{this.style.display='none';if(this.nextElementSibling)this.nextElementSibling.style.display='flex';}">
+                    <div class="hidden w-full h-full items-center justify-center text-green-800 text-2xl"><i class="fa-solid fa-landmark"></i></div>
+                </div>
+            `;
+        }
+
+        function addBusinessDays(dateStr, businessDays, isCalendarDays = false) {
+            if (!dateStr || !businessDays || businessDays <= 0) return null;
+            const parts = dateStr.split('-').map(Number);
+            if (parts.length !== 3) return null;
+            const d = new Date(parts[0], parts[1] - 1, parts[2]);
+            if (isCalendarDays) {
+                d.setDate(d.getDate() + businessDays);
+            } else {
+                let added = 0;
+                while (added < businessDays) {
+                    d.setDate(d.getDate() + 1);
+                    const day = d.getDay();
+                    if (day !== 0 && day !== 6) added++;
+                }
+            }
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}`;
+        }
+
+        function getRemainingBusinessDays(deadlineStr, isCalendarDays = false) {
+            if (!deadlineStr) return null;
+            const parts = deadlineStr.split('-').map(Number);
+            if (parts.length !== 3) return null;
+            const target = new Date(parts[0], parts[1] - 1, parts[2]);
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            if (target.getTime() === today.getTime()) return 0;
+
+            if (isCalendarDays) {
+                return Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+            }
+
+            let count = 0;
+            const step = target > today ? 1 : -1;
+            const cur = new Date(today);
+            while ((step > 0 && cur < target) || (step < 0 && cur > target)) {
+                cur.setDate(cur.getDate() + step);
+                const day = cur.getDay();
+                if (day !== 0 && day !== 6) count += step;
+            }
+            return count;
+        }
+
+        function getCharterStatus(letter) {
+            const sla = parseInt(letter.slaDays || 0, 10);
+            const isNotis = (letter.docCategory || 'Surat') === 'Notis';
+            const unitShort = isNotis ? 'H' : 'HB';
+            if (!sla) return { level: 'none', label: 'Tiada Tempoh', rem: null };
+            if (letter.status === 'Selesai') return { level: 'done', label: `Mematuhi (${sla}${unitShort})`, rem: 0 };
+            const due = letter.deadlineDate || addBusinessDays(letter.dateReceived, sla, isNotis);
+            const rem = getRemainingBusinessDays(due, isNotis);
+            if (rem === null) return { level: 'none', label: 'Tiada Tempoh', rem: null };
+            if (rem < 0) return { level: 'overdue', label: `Lewat ${Math.abs(rem)} Hari`, rem };
+            if (rem <= 3) return { level: 'warning', label: `Baki ${rem} Hari`, rem };
+            return { level: 'ok', label: `Baki ${rem} Hari (${sla}${unitShort})`, rem };
+        }
+
+        function getCharterBadge(letter) {
+            const st = getCharterStatus(letter);
+            if (st.level === 'none') {
+                return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-gray-100 text-gray-600"><i class="fa-regular fa-clock"></i> ${st.label}</span>`;
+            }
+            if (st.level === 'done') {
+                return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800"><i class="fa-solid fa-check-double"></i> ${st.label}</span>`;
+            }
+            if (st.level === 'overdue') {
+                return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-100 text-red-700 border border-red-200 animate-pulse"><i class="fa-solid fa-bell"></i> ${st.label}</span>`;
+            }
+            if (st.level === 'warning') {
+                return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300"><i class="fa-solid fa-triangle-exclamation"></i> ${st.label}</span>`;
+            }
+            return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200"><i class="fa-regular fa-calendar-check"></i> ${st.label}</span>`;
+        }
+
+        function canManageLetterRecord(letter) {
+            if (!currentUser) return false;
+            if (currentUser.role === 'admin' || currentUser.role === 'hod') return true;
+            if (!letter) return true;
+            const sameName = (letter.officer || '').trim().toLowerCase() === (currentUser.name || '').trim().toLowerCase();
+            const sameEmail = letter.officerEmail && currentUser.email && letter.officerEmail.trim().toLowerCase() === currentUser.email.trim().toLowerCase();
+            return sameName || sameEmail;
+        }
+
+        function persistLocalData() {
+            try {
+                localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+                localStorage.setItem(STORAGE_KEYS.LETTERS, JSON.stringify(letters));
+                localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENTS, JSON.stringify(announcements));
+            } catch (err) {
+                console.warn('Amaran penyimpanan setempat:', err);
+            }
+        }
+
+        function loadLocalData() {
+            try {
+                const savedUsers = localStorage.getItem(STORAGE_KEYS.USERS);
+                const savedLetters = localStorage.getItem(STORAGE_KEYS.LETTERS);
+                const savedAnn = localStorage.getItem(STORAGE_KEYS.ANNOUNCEMENTS);
+                users = savedUsers ? JSON.parse(savedUsers) : [...DEFAULT_USERS];
+                letters = savedLetters ? JSON.parse(savedLetters) : [...DEFAULT_LETTERS];
+                announcements = savedAnn ? JSON.parse(savedAnn) : [...DEFAULT_ANNOUNCEMENTS];
+            } catch (err) {
+                users = [...DEFAULT_USERS];
+                letters = [...DEFAULT_LETTERS];
+                announcements = [...DEFAULT_ANNOUNCEMENTS];
+            }
+            if (!selectedAnnouncementId && announcements.length > 0) {
+                selectedAnnouncementId = announcements[0].id;
+            }
+        }
+
+        // =========================================================================
+        // PERMULAAN APLIKASI (LOCAL & FIREBASE)
+        // =========================================================================
+        async function initApp() {
+            loadLocalData();
+
+            try {
+                const sessionRaw = sessionStorage.getItem(STORAGE_KEYS.SESSION);
+                if (sessionRaw) {
+                    const parsed = JSON.parse(sessionRaw);
+                    const matched = users.find(u => u.id === parsed.id || u.username === parsed.username);
+                    if (matched) currentUser = matched;
+                }
+            } catch (err) {}
+
+            try {
+                if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+                    const config = JSON.parse(__firebase_config);
+                    if (config && config.apiKey) {
+                        app = initializeApp(config);
+                        auth = getAuth(app);
+                        db = getFirestore(app);
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await signInWithCustomToken(auth, __initial_auth_token);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+                        isLocalMode = false;
+
+                        onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'letters'), (snap) => {
+                            if (!snap.empty) {
+                                letters = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+                                    .sort((a, b) => (b.dateReceived || '').localeCompare(a.dateReceived || ''));
+                                renderApp();
+                            }
+                        }, () => { isLocalMode = true; });
+
+                        onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'announcements'), (snap) => {
+                            if (!snap.empty) {
+                                announcements = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                                if (!selectedAnnouncementId && announcements.length) selectedAnnouncementId = announcements[0].id;
+                                renderApp();
+                            }
+                        }, () => { isLocalMode = true; });
+                    }
+                }
+            } catch (err) {
+                isLocalMode = true;
+            }
+
+            renderApp();
+        }
+
+        // =========================================================================
+        // PENGURUSAN LOGO RASMI MPHS (MOD ADMIN)
+        // =========================================================================
+        window.openLogoUploadModal = function() {
+            const modalContainer = document.getElementById('modal-container');
+            modalContainer.innerHTML = `
+                <div class="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+                    <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-gray-100 overflow-hidden">
+                        <div class="bg-gradient-to-r from-green-900 to-green-700 px-6 py-4 text-white flex items-center justify-between">
+                            <h3 class="font-bold text-base"><i class="fa-solid fa-image text-amber-300 mr-2"></i>Tukar Logo Rasmi MPHS</h3>
+                            <button onclick="closeModal()" class="text-white/80 hover:text-white"><i class="fa-solid fa-times"></i></button>
+                        </div>
+                        <div class="p-6 space-y-4">
+                            <div class="flex items-center justify-center">
+                                <div class="w-28 h-28 bg-white rounded-2xl border border-gray-200 p-2 flex items-center justify-center mx-auto">
+                                    ${getLogoImgTag("max-w-full max-h-full w-auto h-auto object-contain mx-auto block")}
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-700 uppercase mb-1">Pilih Fail Logo (PNG / JPG)</label>
+                                <input type="file" id="logo-file-input" accept="image/png,image/jpeg,image/webp" class="block w-full text-xs text-gray-600 file:mr-3 file:py-2 file:px-3.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-green-50 file:text-green-800 hover:file:bg-green-100 border border-gray-300 rounded-xl p-1.5">
+                            </div>
+                            <div class="flex justify-between items-center pt-2 border-t border-gray-100">
+                                <button type="button" onclick="resetDefaultLogo()" class="text-xs font-semibold text-gray-500 hover:text-red-600">Tetap Semula Lalai</button>
+                                <button type="button" onclick="closeModal()" class="px-4 py-2 text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl">Tutup</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+
+            document.getElementById('logo-file-input').addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                    OFFICIAL_MPHS_LOGO = reader.result;
+                    try {
+                        localStorage.setItem('esmart_cob_custom_logo', reader.result);
+                    } catch (err) {}
+                    closeModal();
+                    showToast('Logo rasmi MPHS berjaya dikemaskini!', 'success');
+                    renderApp();
+                };
+                reader.readAsDataURL(file);
+            });
+        };
+
+        window.resetDefaultLogo = function() {
+            localStorage.removeItem('esmart_cob_custom_logo');
+            OFFICIAL_MPHS_LOGO = DEFAULT_LOGO_FILE;
+            closeModal();
+            showToast('Logo ditetapkan semula ke fail lalai VECTOR LOGO RASMI MPHS - 21102021(LOGO FINAL).jpg.', 'info');
+            renderApp();
+        };
+
+        // =========================================================================
+        // NOTIFIKASI CHROME GMAIL WEB (CC: cob@mphs.gov.my)
+        // =========================================================================
+        window.notifyOfficerEmail = function(letterId) {
+            const letter = letters.find(l => l.id === letterId);
+            if (!letter) return;
+
+            const toEmail = letter.officerEmail || DEPARTMENT_EMAIL;
+            const docLabel = letter.docCategory || 'Surat';
+            const isNotis = docLabel === 'Notis';
+            const sla = parseInt(letter.slaDays || 0, 10);
+            const unitLabel = isNotis ? 'Hari' : 'Hari Bekerja';
+            const dueText = sla > 0
+                ? `${sla} ${unitLabel} (Tarikh Akhir: ${letter.deadlineDate || addBusinessDays(letter.dateReceived, sla, isNotis) || '-'})`
+                : 'Tiada Tempoh';
+            const subject = `[SMART COB MPHS] Tindakan ${docLabel}: ${letter.refNo} - ${letter.subject}`;
+            const body = [
+                `Assalamualaikum & Salam Sejahtera ${letter.officer || 'Tuan/Puan'},`,
+                ``,
+                `Berikut adalah makluman tugasan ${docLabel.toLowerCase()} melalui SMART COB MPHS:`,
+                ``,
+                `• Jenis Dokumen      : ${docLabel} (${letter.type})`,
+                `• No. Rujukan        : ${letter.refNo}`,
+                `• Perkara            : ${letter.subject}`,
+                `• Daripada / Kepada  : ${letter.senderReceiver}`,
+                `• Kaedah Penyampaian : ${letter.deliveryMethod || '-'}`,
+                `• Tarikh Rekod       : ${letter.dateReceived}`,
+                `• Piagam Pelanggan   : ${dueText}`,
+                `• Status Semasa      : ${letter.status}`,
+                `• Minit / Catatan    : ${letter.minute || 'Sila ambil tindakan sewajarnya.'}`,
+                ``,
+                `Mohon pihak Tuan/Puan mengemaskini status tindakan dalam SMART COB MPHS bagi memastikan pematuhan piagam pelanggan jabatan.`,
+                ``,
+                `Sekian, terima kasih.`,
+                `Bahagian Pesuruhjaya Bangunan (COB)`,
+                `Majlis Perbandaran Hulu Selangor (${DEPARTMENT_EMAIL})`
+            ].join('\n');
+
+            const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(toEmail)}&cc=${encodeURIComponent(DEPARTMENT_EMAIL)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+            window.open(gmailUrl, '_blank', 'noopener,noreferrer');
+            showToast(`Membuka Chrome Gmail kepada ${toEmail} (CC: ${DEPARTMENT_EMAIL})`, 'success');
+        };
+
+        // =========================================================================
+        // PENGESAHAN LOG MASUK & LOG KELUAR
+        // =========================================================================
+        function handleLogin(e) {
+            e.preventDefault();
+            const usernameInput = document.getElementById('login-username').value.trim().toLowerCase();
+            const passwordInput = document.getElementById('login-password').value;
+
+            const found = users.find(u => u.username.toLowerCase() === usernameInput && u.password === passwordInput);
+            if (!found) {
+                showToast('ID Pengguna atau Kata Laluan tidak sah!', 'error');
+                return;
+            }
+
+            currentUser = found;
+            try {
+                sessionStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify({ id: found.id, username: found.username }));
+            } catch (err) {}
+
+            showToast(`Selamat datang, ${found.name}!`, 'success');
+            renderApp();
+
+            const overdueCount = letters.filter(l => getCharterStatus(l).level === 'overdue').length;
+            const warningCount = letters.filter(l => getCharterStatus(l).level === 'warning').length;
+            if (overdueCount > 0 || warningCount > 0) {
+                setTimeout(() => {
+                    showToast(`Amaran Piagam: ${overdueCount} lewat tempoh & ${warningCount} hampir tamat!`, 'warning');
+                }, 700);
+            }
+        }
+
+        window.handleLogout = function() {
+            currentUser = null;
+            sessionStorage.removeItem(STORAGE_KEYS.SESSION);
+            activeTab = 'dashboard';
+            showToast('Anda telah log keluar daripada sistem.', 'info');
+            renderApp();
+        };
+
+        // =========================================================================
+        // PAPAN HEBAHAN VISUAL (POSTER & DOKUMEN PDF/IMEJ)
+        // =========================================================================
+        window.selectAnnouncement = function(id) {
+            selectedAnnouncementId = id;
+            renderApp();
+        };
+
+        window.openAnnouncementLightbox = function(id) {
+            const ann = announcements.find(a => a.id === id);
+            if (!ann) return;
+            const isPdf = (ann.fileType || '').includes('pdf') || (ann.fileName || '').toLowerCase().endsWith('.pdf');
+            const isImg = (ann.fileType || '').startsWith('image/') || /\.(jpg|jpeg|png|webp|gif)$/i.test(ann.fileName || '');
+            const previewUrl = isPdf ? getPdfBlobUrl(ann.id, ann.fileData) : ann.fileData;
+
+            const modalContainer = document.getElementById('modal-container');
+            modalContainer.innerHTML = `
+                <div class="fixed inset-0 bg-black/80 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+                    <div class="bg-white rounded-2xl max-w-5xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+                        <div class="bg-green-950 text-white px-5 py-3.5 flex items-center justify-between">
+                            <div class="min-w-0 pr-4">
+                                <span class="text-[10px] font-bold uppercase tracking-wider text-amber-400">${escapeHtml(ann.category || 'Hebahan Rasmi')}</span>
+                                <h3 class="font-bold text-sm sm:text-base truncate">${escapeHtml(ann.title)}</h3>
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0">
+                                ${ann.fileData ? `<a href="${ann.fileData}" download="${escapeHtml(ann.fileName || 'hebahan')}" class="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-gray-950 text-xs font-bold"><i class="fa-solid fa-download mr-1"></i>Muat Turun</a>` : ''}
+                                <button onclick="closeModal()" class="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-white"><i class="fa-solid fa-times"></i></button>
+                            </div>
+                        </div>
+                        <div class="flex-1 overflow-auto bg-slate-900 flex items-center justify-center p-4">
+                            ${ann.fileData && isImg ? `<img src="${ann.fileData}" alt="${escapeHtml(ann.title)}" class="max-w-full max-h-[76vh] object-contain rounded-lg shadow-xl">` : ''}
+                            ${ann.fileData && isPdf ? `<iframe src="${previewUrl}" class="w-full h-[76vh] rounded-lg bg-white" title="${escapeHtml(ann.title)}"></iframe>` : ''}
+                            ${!ann.fileData ? `
+                                <div class="bg-white rounded-2xl p-8 max-w-xl w-full text-gray-800 shadow-xl">
+                                    <div class="flex items-center gap-3 mb-4 pb-4 border-b border-gray-100">
+                                        <div class="w-12 h-12 rounded-xl bg-green-100 text-green-800 flex items-center justify-center text-xl"><i class="fa-solid fa-bullhorn"></i></div>
+                                        <div>
+                                            <p class="text-xs font-bold text-green-700 uppercase">${escapeHtml(ann.category || 'Hebahan')}</p>
+                                            <p class="text-xs text-gray-500">Diterbitkan oleh ${escapeHtml(ann.postedBy || 'COB MPHS')} • ${escapeHtml(ann.postedAt || '')}</p>
+                                        </div>
+                                    </div>
+                                    <h4 class="font-bold text-lg text-gray-900 mb-3">${escapeHtml(ann.title)}</h4>
+                                    <p class="text-sm text-gray-600 leading-relaxed whitespace-pre-line">${escapeHtml(ann.summary || '')}</p>
+                                </div>` : ''}
+                        </div>
+                    </div>
+                </div>`;
+        };
+
+        window.openAnnouncementModal = function() {
+            pendingAnnouncementFile = null;
+            const modalContainer = document.getElementById('modal-container');
+            modalContainer.innerHTML = `
+                <div class="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+                    <div class="bg-white rounded-2xl max-w-xl w-full shadow-2xl border border-gray-100 overflow-hidden max-h-[92vh] flex flex-col">
+                        <div class="bg-gradient-to-r from-green-900 to-green-700 px-6 py-4 text-white flex items-center justify-between">
+                            <h3 class="font-bold text-base"><i class="fa-solid fa-bullhorn text-amber-300 mr-2"></i>Muat Naik Hebahan / Poster / Pekeliling</h3>
+                            <button onclick="closeModal()" class="text-white/80 hover:text-white"><i class="fa-solid fa-times"></i></button>
+                        </div>
+                        <form id="announcement-form" class="p-6 space-y-4 overflow-y-auto">
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-700 uppercase mb-1">Tajuk Hebahan / Poster *</label>
+                                <input type="text" id="ann-title" required placeholder="Contoh: Poster Taklimat JMB & MC Bil. 1/2026" class="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-green-600 outline-none">
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-700 uppercase mb-1">Kategori</label>
+                                    <select id="ann-category" class="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-green-600 outline-none bg-white">
+                                        <option value="Poster Infografik">Poster Infografik</option>
+                                        <option value="Pekeliling Jabatan">Pekeliling Jabatan</option>
+                                        <option value="Notis Makluman">Notis Makluman</option>
+                                        <option value="Garis Panduan COB">Garis Panduan COB</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-700 uppercase mb-1">Fail Poster / Dokumen (JPEG / PNG / PDF)</label>
+                                    <input type="file" id="ann-file" accept="image/jpeg,image/png,image/webp,application/pdf" class="block w-full text-xs text-gray-600 file:mr-2.5 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-green-50 file:text-green-800 border border-gray-300 rounded-xl p-1">
+                                </div>
+                            </div>
+                            <div id="ann-live-preview" class="hidden rounded-xl border border-dashed border-green-300 bg-green-50/40 p-3 text-center"></div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-700 uppercase mb-1">Ringkasan / Keterangan</label>
+                                <textarea id="ann-summary" rows="3" placeholder="Masukkan penerangan ringkas mengenai poster atau dokumen ini..." class="w-full px-3.5 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-green-600 outline-none"></textarea>
+                            </div>
+                            <div class="flex justify-end gap-2 pt-3 border-t border-gray-100">
+                                <button type="button" onclick="closeModal()" class="px-4 py-2 text-xs font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl">Batal</button>
+                                <button type="submit" class="px-5 py-2 text-xs font-bold text-white bg-green-800 hover:bg-green-900 rounded-xl shadow-sm"><i class="fa-solid fa-paper-plane mr-1.5"></i>Terbitkan Hebahan</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>`;
+
+            document.getElementById('ann-file').addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                const previewBox = document.getElementById('ann-live-preview');
+                if (!file) {
+                    pendingAnnouncementFile = null;
+                    previewBox.classList.add('hidden');
+                    return;
+                }
+                if (file.size > 5 * 1024 * 1024) {
+                    showToast('Saiz fail melebihi had 5MB!', 'error');
+                    e.target.value = '';
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = () => {
+                    pendingAnnouncementFile = {
+                        fileName: file.name,
+                        fileType: file.type,
+                        fileSize: formatFileSize(file.size),
+                        fileData: reader.result
+                    };
+                    previewBox.classList.remove('hidden');
+                    if (file.type.startsWith('image/')) {
+                        previewBox.innerHTML = `<p class="text-[11px] font-semibold text-green-800 mb-2">Pratonton Poster (${escapeHtml(file.name)})</p><img src="${reader.result}" class="max-h-48 mx-auto rounded-lg shadow-sm object-contain">`;
+                    } else {
+                        previewBox.innerHTML = `<p class="text-xs font-semibold text-green-800"><i class="fa-solid fa-file-pdf text-red-600 mr-1.5"></i>Fail PDF sedia dimuat naik: ${escapeHtml(file.name)} (${formatFileSize(file.size)})</p>`;
+                    }
+                };
+                reader.readAsDataURL(file);
+            });
+
+            document.getElementById('announcement-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const title = document.getElementById('ann-title').value.trim();
+                const category = document.getElementById('ann-category').value;
+                const summary = document.getElementById('ann-summary').value.trim();
+                if (!title) return;
+
+                const nowStr = new Date().toLocaleDateString('ms-MY', { day: '2-digit', month: 'short', year: 'numeric' });
+                const newAnn = {
+                    id: 'ann-' + Date.now(),
+                    title,
+                    category,
+                    summary,
+                    fileName: pendingAnnouncementFile ? pendingAnnouncementFile.fileName : '',
+                    fileType: pendingAnnouncementFile ? pendingAnnouncementFile.fileType : '',
+                    fileSize: pendingAnnouncementFile ? pendingAnnouncementFile.fileSize : '',
+                    fileData: pendingAnnouncementFile ? pendingAnnouncementFile.fileData : null,
+                    postedBy: currentUser ? currentUser.name : 'Pentadbir COB',
+                    postedAt: nowStr,
+                    createdById: currentUser ? currentUser.id : 'usr-admin'
+                };
+
+                announcements.unshift(newAnn);
+                selectedAnnouncementId = newAnn.id;
+                persistLocalData();
+
+                if (!isLocalMode && db) {
+                    try {
+                        const { id, ...payload } = newAnn;
+                        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'announcements'), payload);
+                    } catch (err) {}
+                }
+
+                closeModal();
+                showToast('Hebahan visual berjaya diterbitkan di Dashboard!', 'success');
+                renderApp();
+            });
+        };
+
+        window.deleteAnnouncement = async function(id) {
+            announcements = announcements.filter(a => a.id !== id);
+            if (selectedAnnouncementId === id) {
+                selectedAnnouncementId = announcements.length ? announcements[0].id : null;
+            }
+            persistLocalData();
+            if (!isLocalMode && db) {
+                try {
+                    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'announcements', id));
+                } catch (err) {}
+            }
+            showToast('Hebahan telah dipadam.', 'info');
+            renderApp();
+        };
+
+        // =========================================================================
+        // PENGURUSAN SURAT & NOTIS (DAFTAR, KEMASKINI, PADAM, MUAT TURUN, CSV)
+        // =========================================================================
+        window.openLetterModal = function(letterId = null) {
+            const isEdit = Boolean(letterId);
+            const existing = isEdit ? letters.find(l => l.id === letterId) : null;
+            if (isEdit && existing && !canManageLetterRecord(existing)) {
+                showToast('Akses disekat: Anda hanya boleh mengemaskini rekod tugasan anda sendiri.', 'error');
+                return;
+            }
+
+            pendingLetterFile = null;
+            const todayStr = new Date().toISOString().split('T')[0];
+            const defaultOfficer = existing ? existing.officer : (currentUser && currentUser.role === 'officer' ? currentUser.name : (users[2]?.name || users[0]?.name || ''));
+
+            const modalContainer = document.getElementById('modal-container');
+            modalContainer.innerHTML = `
+                <div class="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+                    <div class="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-gray-100 overflow-hidden max-h-[92vh] flex flex-col">
+                        <div class="bg-gradient-to-r from-green-900 to-green-700 px-6 py-4 text-white flex items-center justify-between">
+                            <div>
+                                <h3 class="font-bold text-base">${isEdit ? 'Kemaskini Rekod Surat / Notis' : 'Daftar Rekod Surat / Notis Baharu'}</h3>
+                                <p class="text-[11px] text-green-100">SMART COB MPHS • Pemantauan Piagam Pelanggan</p>
+                            </div>
+                            <button onclick="closeModal()" class="text-white/80 hover:text-white"><i class="fa-solid fa-times"></i></button>
+                        </div>
+                        <form id="letter-form" class="p-6 space-y-4 overflow-y-auto">
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-700 uppercase mb-1">Kategori Dokumen *</label>
+                                    <select id="ltr-doc-category" class="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-green-600 outline-none">
+                                        <option value="Surat" ${(existing?.docCategory || 'Surat') === 'Surat' ? 'selected' : ''}>Surat</option>
+                                        <option value="Notis" ${existing?.docCategory === 'Notis' ? 'selected' : ''}>Notis</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-700 uppercase mb-1">Arah Aliran *</label>
+                                    <select id="ltr-type" class="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-green-600 outline-none">
+                                        <option value="Masuk" ${(['Masuk', 'Surat Masuk'].includes(existing?.type || 'Masuk')) ? 'selected' : ''}>Masuk</option>
+                                        <option value="Keluar" ${['Keluar', 'Surat Keluar'].includes(existing?.type) ? 'selected' : ''}>Keluar</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-700 uppercase mb-1">Kaedah Penyampaian *</label>
+                                    <select id="ltr-delivery" class="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-green-600 outline-none">
+                                        ${DELIVERY_METHODS.map(m => `<option value="${m}" ${(existing?.deliveryMethod || 'Serahan Tangan') === m ? 'selected' : ''}>${m}</option>`).join('')}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-700 uppercase mb-1">No. Rujukan Rasmi *</label>
+                                    <input type="text" id="ltr-ref" required value="${escapeHtml(existing?.refNo || '')}" placeholder="MPHS/COB/2026/..." class="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-green-600 outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-700 uppercase mb-1">Tarikh Terima / Keluar *</label>
+                                    <input type="date" id="ltr-date" required value="${escapeHtml(existing?.dateReceived || todayStr)}" class="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-green-600 outline-none">
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-700 uppercase mb-1">Perkara / Tajuk Surat atau Notis *</label>
+                                <input type="text" id="ltr-subject" required value="${escapeHtml(existing?.subject || '')}" placeholder="Nyatakan tajuk penuh surat atau notis..." class="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-green-600 outline-none">
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-700 uppercase mb-1">Daripada / Kepada *</label>
+                                    <input type="text" id="ltr-sender" required value="${escapeHtml(existing?.senderReceiver || '')}" placeholder="Nama JMB / MC / Agensi" class="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-green-600 outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-700 uppercase mb-1">Tempoh *</label>
+                                    <select id="ltr-sla" class="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-green-600 outline-none"></select>
+                                    <p id="ltr-deadline-preview" class="text-[11px] text-green-700 font-semibold mt-1"></p>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-700 uppercase mb-1">Pegawai Bertindak *</label>
+                                    <select id="ltr-officer" class="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-green-600 outline-none">
+                                        ${users.map(u => `<option value="${escapeHtml(u.name)}" data-email="${escapeHtml(u.email)}" ${u.name === defaultOfficer ? 'selected' : ''}>${escapeHtml(u.name)} (${escapeHtml(u.position)})</option>`).join('')}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-700 uppercase mb-1">Status Tindakan *</label>
+                                    <select id="ltr-status" class="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-green-600 outline-none">
+                                        <option value="Baru Diterima" ${(existing?.status || 'Baru Diterima') === 'Baru Diterima' ? 'selected' : ''}>Baru Diterima</option>
+                                        <option value="Dalam Tindakan" ${existing?.status === 'Dalam Tindakan' ? 'selected' : ''}>Dalam Tindakan</option>
+                                        <option value="Pemakluman" ${existing?.status === 'Pemakluman' ? 'selected' : ''}>Pemakluman</option>
+                                        <option value="Selesai" ${existing?.status === 'Selesai' ? 'selected' : ''}>Selesai</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-700 uppercase mb-1">Minit Arahan / Catatan Tindakan</label>
+                                <textarea id="ltr-minute" rows="2" placeholder="Catatan tindakan atau minit Ketua Jabatan..." class="w-full px-3.5 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-green-600 outline-none">${escapeHtml(existing?.minute || '')}</textarea>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-700 uppercase mb-1">Lampiran Salinan Digital (PDF / JPEG / PNG - Maks 5MB)</label>
+                                <input type="file" id="ltr-file" accept=".pdf,image/jpeg,image/png,image/webp" class="block w-full text-xs text-gray-600 file:mr-3 file:py-2 file:px-3.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-green-50 file:text-green-800 border border-gray-300 rounded-xl p-1.5">
+                                ${existing?.fileName ? `<p class="text-[11px] text-gray-500 mt-1"><i class="fa-solid fa-paperclip mr-1"></i>Fail sedia ada: <b>${escapeHtml(existing.fileName)}</b> (${escapeHtml(existing.fileSize || '-')})</p>` : ''}
+                            </div>
+
+                            <div class="flex justify-end gap-2 pt-3 border-t border-gray-100">
+                                <button type="button" onclick="closeModal()" class="px-4 py-2 text-xs font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl">Batal</button>
+                                <button type="submit" class="px-5 py-2 text-xs font-bold text-white bg-green-800 hover:bg-green-900 rounded-xl shadow-sm"><i class="fa-solid fa-floppy-disk mr-1.5"></i>${isEdit ? 'Simpan Kemaskini' : 'Daftar Rekod'}</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>`;
+
+            const populateSlaOptions = (preferredVal = null) => {
+                const catVal = document.getElementById('ltr-doc-category').value;
+                const slaSelect = document.getElementById('ltr-sla');
+                const currentVal = preferredVal !== null ? Number(preferredVal) : Number(slaSelect.value || 14);
+                const options = catVal === 'Notis'
+                    ? [
+                        { val: 3, label: '3 Hari' },
+                        { val: 7, label: '7 Hari' },
+                        { val: 14, label: '14 Hari' },
+                        { val: 21, label: '21 Hari' },
+                        { val: 0, label: 'Tiada Tempoh' }
+                    ]
+                    : [
+                        { val: 7, label: '7 Hari Bekerja' },
+                        { val: 14, label: '14 Hari Bekerja' },
+                        { val: 21, label: '21 Hari Bekerja' },
+                        { val: 0, label: 'Tiada Tempoh' }
+                    ];
+                const validVal = options.some(o => o.val === currentVal) ? currentVal : 14;
+                slaSelect.innerHTML = options.map(o => `<option value="${o.val}" ${o.val === validVal ? 'selected' : ''}>${o.label}</option>`).join('');
+            };
+
+            const updateDeadlineText = () => {
+                const catVal = document.getElementById('ltr-doc-category').value;
+                const isNotis = catVal === 'Notis';
+                const dVal = document.getElementById('ltr-date').value;
+                const sVal = parseInt(document.getElementById('ltr-sla').value, 10);
+                const el = document.getElementById('ltr-deadline-preview');
+                if (!el) return;
+                if (sVal > 0 && dVal) {
+                    const note = isNotis ? '(Hari kalendar)' : '(Tidak termasuk Sabtu & Ahad)';
+                    el.textContent = `Tarikh Akhir Sasaran: ${addBusinessDays(dVal, sVal, isNotis)} ${note}`;
+                } else {
+                    el.textContent = 'Tiada tarikh akhir ditetapkan.';
+                }
+            };
+
+            populateSlaOptions(existing ? Number(existing.slaDays ?? 14) : 14);
+            updateDeadlineText();
+            document.getElementById('ltr-doc-category').addEventListener('change', () => {
+                populateSlaOptions();
+                updateDeadlineText();
+            });
+            document.getElementById('ltr-date').addEventListener('change', updateDeadlineText);
+            document.getElementById('ltr-sla').addEventListener('change', updateDeadlineText);
+
+            document.getElementById('ltr-file').addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) {
+                    pendingLetterFile = null;
+                    return;
+                }
+                if (file.size > 5 * 1024 * 1024) {
+                    showToast('Saiz fail melebihi had maksimum 5MB!', 'error');
+                    e.target.value = '';
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = () => {
+                    pendingLetterFile = {
+                        fileName: file.name,
+                        fileType: file.type,
+                        fileSize: formatFileSize(file.size),
+                        fileData: reader.result
+                    };
+                };
+                reader.readAsDataURL(file);
+            });
+
+            document.getElementById('letter-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const officerSelect = document.getElementById('ltr-officer');
+                const selectedOpt = officerSelect.options[officerSelect.selectedIndex];
+                const officerName = officerSelect.value;
+                const officerEmail = selectedOpt ? (selectedOpt.getAttribute('data-email') || DEPARTMENT_EMAIL) : DEPARTMENT_EMAIL;
+                const docCategory = document.getElementById('ltr-doc-category').value;
+                const isNotis = docCategory === 'Notis';
+                const dateReceived = document.getElementById('ltr-date').value;
+                const slaDays = parseInt(document.getElementById('ltr-sla').value, 10);
+                const deadlineDate = slaDays > 0 ? addBusinessDays(dateReceived, slaDays, isNotis) : null;
+
+                const recordData = {
+                    docCategory,
+                    type: document.getElementById('ltr-type').value,
+                    deliveryMethod: document.getElementById('ltr-delivery').value,
+                    refNo: document.getElementById('ltr-ref').value.trim(),
+                    subject: document.getElementById('ltr-subject').value.trim(),
+                    senderReceiver: document.getElementById('ltr-sender').value.trim(),
+                    dateReceived,
+                    slaDays,
+                    deadlineDate,
+                    officer: officerName,
+                    officerEmail,
+                    status: document.getElementById('ltr-status').value,
+                    minute: document.getElementById('ltr-minute').value.trim(),
+                    fileName: pendingLetterFile ? pendingLetterFile.fileName : (existing?.fileName || ''),
+                    fileType: pendingLetterFile ? pendingLetterFile.fileType : (existing?.fileType || ''),
+                    fileSize: pendingLetterFile ? pendingLetterFile.fileSize : (existing?.fileSize || ''),
+                    fileData: pendingLetterFile ? pendingLetterFile.fileData : (existing?.fileData || null),
+                    createdAt: existing?.createdAt || new Date().toISOString()
+                };
+
+                if (isEdit && existing) {
+                    const idx = letters.findIndex(l => l.id === existing.id);
+                    if (idx !== -1) letters[idx] = { ...existing, ...recordData };
+                    persistLocalData();
+                    if (!isLocalMode && db) {
+                        try {
+                            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'letters', existing.id), recordData);
+                        } catch (err) {}
+                    }
+                    showToast('Rekod surat/notis berjaya dikemaskini!', 'success');
+                } else {
+                    const newLetter = { id: 'srt-' + Date.now(), ...recordData };
+                    letters.unshift(newLetter);
+                    persistLocalData();
+                    if (!isLocalMode && db) {
+                        try {
+                            const { id, ...payload } = newLetter;
+                            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'letters'), payload);
+                        } catch (err) {}
+                    }
+                    showToast('Rekod baharu berjaya didaftarkan!', 'success');
+                }
+
+                closeModal();
+                renderApp();
+            });
+        };
+
+        window.deleteLetter = async function(id) {
+            const target = letters.find(l => l.id === id);
+            if (!target) return;
+            if (!canManageLetterRecord(target)) {
+                showToast('Akses disekat: Anda tidak dibenarkan memadam rekod pegawai lain.', 'error');
+                return;
+            }
+            letters = letters.filter(l => l.id !== id);
+            persistLocalData();
+            if (!isLocalMode && db) {
+                try {
+                    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'letters', id));
+                } catch (err) {}
+            }
+            showToast('Rekod berjaya dipadam daripada sistem.', 'info');
+            renderApp();
+        };
+
+        window.previewLetterAttachment = function(id) {
+            const letter = letters.find(l => l.id === id);
+            if (!letter) return;
+            if (!letter.fileData) {
+                showToast(`Fail rujukan "${letter.fileName || 'Tiada lampiran'}" adalah rekod sampel tanpa muat naik fizikal.`, 'info');
+                return;
+            }
+            const isPdf = (letter.fileType || '').includes('pdf') || (letter.fileName || '').toLowerCase().endsWith('.pdf');
+            const previewUrl = isPdf ? getPdfBlobUrl(letter.id, letter.fileData) : letter.fileData;
+
+            const modalContainer = document.getElementById('modal-container');
+            modalContainer.innerHTML = `
+                <div class="fixed inset-0 bg-black/80 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+                    <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+                        <div class="bg-green-950 text-white px-5 py-3.5 flex items-center justify-between">
+                            <div class="truncate pr-3">
+                                <p class="text-[11px] text-amber-400 font-bold">${escapeHtml(letter.refNo)}</p>
+                                <h3 class="font-bold text-sm truncate">${escapeHtml(letter.fileName)}</h3>
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0">
+                                <a href="${letter.fileData}" download="${escapeHtml(letter.fileName)}" class="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-gray-950 text-xs font-bold"><i class="fa-solid fa-download mr-1"></i>Muat Turun</a>
+                                <button onclick="closeModal()" class="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center justify-center"><i class="fa-solid fa-times"></i></button>
+                            </div>
+                        </div>
+                        <div class="flex-1 overflow-auto bg-slate-900 flex items-center justify-center p-4">
+                            ${isPdf
+                                ? `<iframe src="${previewUrl}" class="w-full h-[74vh] rounded-lg bg-white" title="${escapeHtml(letter.fileName)}"></iframe>`
+                                : `<img src="${letter.fileData}" alt="${escapeHtml(letter.fileName)}" class="max-w-full max-h-[74vh] object-contain rounded-lg shadow-xl">`
+                            }
+                        </div>
+                    </div>
+                </div>`;
+        };
+
+        window.exportLettersCSV = function() {
+            const filtered = getFilteredLetters();
+            if (filtered.length === 0) {
+                showToast('Tiada rekod untuk dieksport.', 'warning');
+                return;
+            }
+            const headers = ['Kategori', 'Jenis', 'Kaedah Penyampaian', 'No Rujukan', 'Perkara', 'Daripada/Kepada', 'Tarikh', 'Piagam (Hari)', 'Tarikh Akhir', 'Pegawai', 'Status', 'Minit'];
+            const rows = filtered.map(l => [
+                l.docCategory || 'Surat',
+                l.type,
+                l.deliveryMethod || '-',
+                l.refNo,
+                l.subject,
+                l.senderReceiver,
+                l.dateReceived,
+                l.slaDays || 0,
+                l.deadlineDate || '-',
+                l.officer,
+                l.status,
+                l.minute || ''
+            ].map(val => `"${String(val).replace(/"/g, '""')}"`).join(','));
+
+            const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Laporan_SMART_COB_MPHS_${new Date().toISOString().slice(0, 10)}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast(`Berjaya mengeksport ${filtered.length} rekod ke fail CSV.`, 'success');
+        };
+
+        // =========================================================================
+        // PENGURUSAN PENGGUNA & RESET KATA LALUAN (MOD ADMIN)
+        // =========================================================================
+        window.openUserModal = function(userId = null) {
+            if (!currentUser || currentUser.role !== 'admin') {
+                showToast('Hanya Mod Admin dibenarkan mengurus akaun pengguna.', 'error');
+                return;
+            }
+            const isEdit = Boolean(userId);
+            const existing = isEdit ? users.find(u => u.id === userId) : null;
+
+            const modalContainer = document.getElementById('modal-container');
+            modalContainer.innerHTML = `
+                <div class="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+                    <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-gray-100 overflow-hidden">
+                        <div class="bg-gradient-to-r from-green-900 to-green-700 px-6 py-4 text-white flex items-center justify-between">
+                            <h3 class="font-bold text-base"><i class="fa-solid fa-user-shield text-amber-300 mr-2"></i>${isEdit ? 'Edit Pengguna & Reset Kata Laluan' : 'Tambah Akaun Pegawai Baharu'}</h3>
+                            <button onclick="closeModal()" class="text-white/80 hover:text-white"><i class="fa-solid fa-times"></i></button>
+                        </div>
+                        <form id="user-form" class="p-6 space-y-3.5">
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-700 uppercase mb-1">Nama Penuh Pegawai *</label>
+                                <input type="text" id="usr-name" required value="${escapeHtml(existing?.name || '')}" class="w-full px-3.5 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-green-600 outline-none">
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-700 uppercase mb-1">ID Pengguna *</label>
+                                    <input type="text" id="usr-username" required value="${escapeHtml(existing?.username || '')}" class="w-full px-3.5 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-green-600 outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-700 uppercase mb-1">Kata Laluan *</label>
+                                    <input type="text" id="usr-password" required value="${escapeHtml(existing?.password || '123')}" class="w-full px-3.5 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-green-600 outline-none">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-700 uppercase mb-1">Jawatan *</label>
+                                <input type="text" id="usr-position" required value="${escapeHtml(existing?.position || '')}" placeholder="Contoh: Penolong Pegawai Tadbir (COB)" class="w-full px-3.5 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-green-600 outline-none">
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-700 uppercase mb-1">Emel Rasmi *</label>
+                                    <input type="email" id="usr-email" required value="${escapeHtml(existing?.email || '')}" placeholder="nama@mphs.gov.my" class="w-full px-3.5 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-green-600 outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-700 uppercase mb-1">Peranan Akses *</label>
+                                    <select id="usr-role" class="w-full px-3.5 py-2 border border-gray-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-green-600 outline-none">
+                                        <option value="officer" ${(existing?.role || 'officer') === 'officer' ? 'selected' : ''}>Pegawai COB (Tugasan Sendiri)</option>
+                                        <option value="hod" ${existing?.role === 'hod' ? 'selected' : ''}>Ketua Jabatan (Pemantauan Penuh)</option>
+                                        <option value="admin" ${existing?.role === 'admin' ? 'selected' : ''}>Mod Admin (Kawalan Penuh)</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="flex justify-end gap-2 pt-3 border-t border-gray-100">
+                                <button type="button" onclick="closeModal()" class="px-4 py-2 text-xs font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl">Batal</button>
+                                <button type="submit" class="px-5 py-2 text-xs font-bold text-white bg-green-800 hover:bg-green-900 rounded-xl"><i class="fa-solid fa-check mr-1.5"></i>Simpan Akaun</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>`;
+
+            document.getElementById('user-form').addEventListener('submit', (e) => {
+                e.preventDefault();
+                const newUserObj = {
+                    id: existing?.id || ('usr-' + Date.now()),
+                    name: document.getElementById('usr-name').value.trim(),
+                    username: document.getElementById('usr-username').value.trim().toLowerCase(),
+                    password: document.getElementById('usr-password').value,
+                    position: document.getElementById('usr-position').value.trim(),
+                    email: document.getElementById('usr-email').value.trim(),
+                    role: document.getElementById('usr-role').value
+                };
+
+                const duplicate = users.find(u => u.username.toLowerCase() === newUserObj.username && u.id !== newUserObj.id);
+                if (duplicate) {
+                    showToast('ID Pengguna telah digunakan oleh pegawai lain!', 'error');
+                    return;
+                }
+
+                if (isEdit && existing) {
+                    const idx = users.findIndex(u => u.id === existing.id);
+                    if (idx !== -1) users[idx] = newUserObj;
+                    if (currentUser.id === newUserObj.id) currentUser = newUserObj;
+                    showToast(`Maklumat & kata laluan ${newUserObj.name} berjaya dikemaskini!`, 'success');
+                } else {
+                    users.push(newUserObj);
+                    showToast(`Akaun pegawai ${newUserObj.name} berjaya ditambah!`, 'success');
+                }
+
+                persistLocalData();
+                closeModal();
+                renderApp();
+            });
+        };
+
+        window.deleteUser = function(userId) {
+            if (!currentUser || currentUser.role !== 'admin') return;
+            if (userId === currentUser.id) {
+                showToast('Anda tidak boleh memadam akaun anda sendiri yang sedang log masuk.', 'error');
+                return;
+            }
+            users = users.filter(u => u.id !== userId);
+            persistLocalData();
+            showToast('Akaun pengguna telah dipadam.', 'info');
+            renderApp();
+        };
+
+        // =========================================================================
+        // PENAPISAN & NAVIGASI TAB
+        // =========================================================================
+        window.setTab = function(tab) {
+            activeTab = tab;
+            renderApp();
+        };
+
+        window.setYearFilter = function(yr) {
+            activeYearTab = yr;
+            activeMonthTab = 'ALL';
+            renderApp();
+        };
+
+        window.setMonthFilter = function(mo) {
+            activeMonthTab = mo;
+            renderApp();
+        };
+
+        window.updateLetterFilters = function() {
+            const catEl = document.getElementById('filter-doc-cat');
+            const typeEl = document.getElementById('filter-type');
+            const statEl = document.getElementById('filter-status');
+            const searchEl = document.getElementById('filter-search');
+            if (catEl) filterDocCategory = catEl.value;
+            if (typeEl) filterType = typeEl.value;
+            if (statEl) filterStatus = statEl.value;
+            if (searchEl) searchQuery = searchEl.value;
+            renderApp();
+        };
+
+        function getFilteredLetters() {
+            return letters.filter(l => {
+                const dateStr = l.dateReceived || '';
+                const yr = dateStr.slice(0, 4);
+                const mo = dateStr.slice(5, 7);
+
+                if (activeYearTab !== 'ALL' && yr !== activeYearTab) return false;
+                if (activeMonthTab !== 'ALL' && mo !== activeMonthTab) return false;
+                if (filterDocCategory !== 'ALL' && (l.docCategory || 'Surat') !== filterDocCategory) return false;
+                if (filterType !== 'ALL') {
+                    const normalizedType = l.type === 'Surat Masuk' ? 'Masuk' : (l.type === 'Surat Keluar' ? 'Keluar' : l.type);
+                    if (normalizedType !== filterType) return false;
+                }
+                if (filterStatus !== 'ALL' && l.status !== filterStatus) return false;
+
+                if (searchQuery.trim() !== '') {
+                    const q = searchQuery.toLowerCase();
+                    const hay = `${l.refNo} ${l.subject} ${l.senderReceiver} ${l.officer} ${l.deliveryMethod || ''} ${l.docCategory || ''}`.toLowerCase();
+                    if (!hay.includes(q)) return false;
+                }
+                return true;
+            });
+        }
+
+        // =========================================================================
+        // PEMAPARAN ANTARA MUKA (RENDER ENGINE)
+        // =========================================================================
+        function renderLoginScreen() {
+            const appEl = document.getElementById('app');
+            appEl.innerHTML = `
+                <div class="min-h-screen hero-gradient flex items-center justify-center p-4">
+                    <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 sm:p-10 border border-white/20">
+                        <div class="flex flex-col items-center text-center mb-7">
+                            <div class="w-28 h-28 bg-white rounded-2xl shadow-md border border-gray-100 p-3 flex items-center justify-center mx-auto mb-4">
+                                ${getLogoImgTag("max-w-full max-h-full w-auto h-auto object-contain mx-auto block")}
+                            </div>
+                            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-amber-100 text-amber-900 mb-2">
+                                <i class="fa-solid fa-shield-halved text-amber-600"></i> Pelaksanaan Rasmi • Disember 2026
+                            </span>
+                            <h1 class="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight">SMART COB MPHS</h1>
+                            <p class="text-xs sm:text-sm text-gray-500 mt-1">Bahagian Pesuruhjaya Bangunan • Majlis Perbandaran Hulu Selangor</p>
+                        </div>
+
+                        <form id="login-form" class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1.5">ID Pengguna</label>
+                                <div class="relative">
+                                    <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-400"><i class="fa-solid fa-user"></i></span>
+                                    <input type="text" id="login-username" required autocomplete="username" placeholder="Masukkan ID pengguna anda" class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-green-700 focus:border-green-700 outline-none">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1.5">Kata Laluan</label>
+                                <div class="relative">
+                                    <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-400"><i class="fa-solid fa-lock"></i></span>
+                                    <input type="password" id="login-password" required autocomplete="current-password" placeholder="Masukkan kata laluan" class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-green-700 focus:border-green-700 outline-none">
+                                </div>
+                            </div>
+                            <button type="submit" class="w-full py-3.5 px-4 bg-green-800 hover:bg-green-900 text-white font-bold text-sm rounded-xl shadow-lg shadow-green-900/20 transition flex items-center justify-center gap-2 mt-2">
+                                <i class="fa-solid fa-right-to-bracket"></i> Log Masuk Sistem
+                            </button>
+                        </form>
+
+                        <div class="mt-6 pt-5 border-t border-gray-100 text-center">
+                            <p class="text-xs text-gray-500">Emel Rasmi Jabatan: <span class="font-bold text-green-800">${DEPARTMENT_EMAIL}</span></p>
+                        </div>
+                    </div>
+                </div>`;
+
+            document.getElementById('login-form').addEventListener('submit', handleLogin);
+        }
+
+        function renderDashboardView() {
+            const totalLetters = letters.length;
+            const inProgress = letters.filter(l => l.status === 'Dalam Tindakan' || l.status === 'Baru Diterima').length;
+            const completed = letters.filter(l => l.status === 'Selesai').length;
+            const overdueLetters = letters.filter(l => getCharterStatus(l).level === 'overdue');
+            const warningLetters = letters.filter(l => getCharterStatus(l).level === 'warning');
+            const completionRate = totalLetters > 0 ? Math.round((completed / totalLetters) * 100) : 0;
+
+            const activeAnn = announcements.find(a => a.id === selectedAnnouncementId) || announcements[0] || null;
+            const isPdf = activeAnn && ((activeAnn.fileType || '').includes('pdf') || (activeAnn.fileName || '').toLowerCase().endsWith('.pdf'));
+            const isImg = activeAnn && ((activeAnn.fileType || '').startsWith('image/') || /\.(jpg|jpeg|png|webp|gif)$/i.test(activeAnn.fileName || ''));
+            const previewUrl = activeAnn && isPdf ? getPdfBlobUrl(activeAnn.id, activeAnn.fileData) : activeAnn?.fileData;
+
+            return `
+                <div class="space-y-6">
+                    <!-- Hero Banner -->
+                    <div class="hero-gradient rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden">
+                        <div class="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                            <div class="max-w-2xl">
+                                <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full glass-pill text-xs font-semibold text-amber-300 mb-3">
+                                    <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span> Papan Pemuka Operasi Masa Nyata
+                                </div>
+                                <h2 class="text-2xl sm:text-3xl font-extrabold tracking-tight">Selamat Datang, ${escapeHtml(currentUser.name)}</h2>
+                                <p class="text-xs sm:text-sm text-green-100 mt-1.5 leading-relaxed">
+                                    Pemantauan bersepadu pendaftaran surat masuk/keluar, notis rasmi, kaedah penyampaian serta pematuhan Piagam Pelanggan Bahagian Pesuruhjaya Bangunan (COB), MPHS.
+                                </p>
+                            </div>
+                            <div class="flex flex-wrap gap-3 shrink-0">
+                                <button onclick="openLetterModal()" class="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-gray-950 font-bold text-xs sm:text-sm rounded-xl shadow-lg transition flex items-center gap-2">
+                                    <i class="fa-solid fa-plus"></i> Daftar Surat / Notis
+                                </button>
+                                <button onclick="setTab('letters')" class="px-4 py-2.5 glass-pill hover:bg-white/20 text-white font-semibold text-xs sm:text-sm rounded-xl transition flex items-center gap-2">
+                                    <i class="fa-solid fa-folder-open"></i> Senarai Rekod (${totalLetters})
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Banner Amaran / Alarm Piagam Pelanggan -->
+                    ${(overdueLetters.length > 0 || warningLetters.length > 0) ? `
+                        <div class="bg-red-50 border-l-4 border-red-600 rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div class="flex items-start gap-3.5">
+                                <div class="w-10 h-10 rounded-xl bg-red-600 text-white flex items-center justify-center shrink-0 animate-bounce">
+                                    <i class="fa-solid fa-bell text-lg"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-extrabold text-sm sm:text-base text-red-900">Amaran Pematuhan Piagam Pelanggan COB!</h3>
+                                    <p class="text-xs sm:text-sm text-red-800 mt-0.5">
+                                        Terdapat <b>${overdueLetters.length} rekod telah melepasi tempoh</b> dan <b>${warningLetters.length} rekod hampir tamat tempoh (&le; 3 hari)</b>. Sila ambil tindakan segera atau hantar peringatan emel kepada pegawai berkaitan.
+                                    </p>
+                                </div>
+                            </div>
+                            <button onclick="setTab('letters')" class="px-4 py-2 bg-red-700 hover:bg-red-800 text-white text-xs font-bold rounded-xl shrink-0 self-start sm:self-center">
+                                Semak Rekod Terlibat <i class="fa-solid fa-arrow-right ml-1"></i>
+                            </button>
+                        </div>
+                    ` : ''}
+
+                    <!-- Kad Statistik Prestasi -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div class="bg-white rounded-2xl p-5 border border-gray-100 shadow-xs">
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="text-xs font-bold uppercase text-gray-400">Jumlah Surat &amp; Notis</span>
+                                <div class="w-10 h-10 rounded-xl bg-green-50 text-green-700 flex items-center justify-center"><i class="fa-solid fa-envelopes-bulk text-lg"></i></div>
+                            </div>
+                            <p class="text-3xl font-extrabold text-gray-900">${totalLetters}</p>
+                            <p class="text-xs text-gray-500 mt-1">Keseluruhan rekod berdaftar</p>
+                        </div>
+
+                        <div class="bg-white rounded-2xl p-5 border border-gray-100 shadow-xs">
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="text-xs font-bold uppercase text-gray-400">Dalam Tindakan</span>
+                                <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center"><i class="fa-solid fa-hourglass-half text-lg"></i></div>
+                            </div>
+                            <p class="text-3xl font-extrabold text-amber-600">${inProgress}</p>
+                            <p class="text-xs text-gray-500 mt-1">Menunggu tindakan &amp; maklum balas</p>
+                        </div>
+
+                        <div class="bg-white rounded-2xl p-5 border border-gray-100 shadow-xs">
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="text-xs font-bold uppercase text-gray-400">Selesai Tindakan</span>
+                                <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center"><i class="fa-solid fa-circle-check text-lg"></i></div>
+                            </div>
+                            <div class="flex items-baseline gap-2">
+                                <p class="text-3xl font-extrabold text-emerald-700">${completed}</p>
+                                <span class="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">${completionRate}%</span>
+                            </div>
+                            <div class="w-full bg-gray-100 h-1.5 rounded-full mt-2 overflow-hidden">
+                                <div class="bg-emerald-600 h-full rounded-full" style="width: ${completionRate}%"></div>
+                            </div>
+                        </div>
+
+                        <div class="bg-white rounded-2xl p-5 border border-gray-100 shadow-xs">
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="text-xs font-bold uppercase text-gray-400">Amaran Piagam</span>
+                                <div class="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center"><i class="fa-solid fa-bell text-lg"></i></div>
+                            </div>
+                            <p class="text-3xl font-extrabold text-red-600">${overdueLetters.length + warningLetters.length}</p>
+                            <p class="text-xs text-gray-500 mt-1">${overdueLetters.length} lewat • ${warningLetters.length} hampir tamat</p>
+                        </div>
+                    </div>
+
+                    <!-- Ruang Paparan Visual Hebahan Rasmi (Poster & Dokumen PDF/JPEG) -->
+                    <div class="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+                        <div class="px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gray-50/70">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-xl bg-green-800 text-white flex items-center justify-center shadow-xs">
+                                    <i class="fa-solid fa-bullhorn"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-extrabold text-base text-gray-900">Papan Hebahan Rasmi &amp; Paparan Poster / Dokumen</h3>
+                                    <p class="text-xs text-gray-500">Paparan terus poster infografik, pekeliling PDF dan makluman terkini jabatan</p>
+                                </div>
+                            </div>
+                            <button onclick="openAnnouncementModal()" class="px-4 py-2 bg-green-800 hover:bg-green-900 text-white text-xs font-bold rounded-xl shadow-xs transition self-start sm:self-center">
+                                <i class="fa-solid fa-cloud-arrow-up mr-1.5"></i>Muat Naik Poster / Dokumen
+                            </button>
+                        </div>
+
+                        ${announcements.length === 0 ? `
+                            <div class="p-10 text-center text-gray-400">
+                                <i class="fa-regular fa-image text-4xl mb-2"></i>
+                                <p class="text-sm font-medium">Tiada hebahan atau poster dimuat naik buat masa ini.</p>
+                            </div>
+                        ` : `
+                            <div class="grid grid-cols-1 lg:grid-cols-12">
+                                <div class="lg:col-span-5 border-b lg:border-b-0 lg:border-r border-gray-100 divide-y divide-gray-100 max-h-[520px] overflow-y-auto">
+                                    ${announcements.map(ann => {
+                                        const isSelected = activeAnn && activeAnn.id === ann.id;
+                                        const thumbIsImg = ann.fileData && ((ann.fileType || '').startsWith('image/') || /\.(jpg|jpeg|png|webp)$/i.test(ann.fileName || ''));
+                                        const thumbIsPdf = (ann.fileType || '').includes('pdf') || (ann.fileName || '').toLowerCase().endsWith('.pdf');
+                                        return `
+                                            <div onclick="selectAnnouncement('${ann.id}')" class="p-4 cursor-pointer transition flex items-start gap-3.5 ${isSelected ? 'bg-green-50/80 border-l-4 border-green-700' : 'hover:bg-gray-50'}">
+                                                <div class="w-16 h-16 rounded-xl border border-gray-200 bg-white shrink-0 overflow-hidden flex items-center justify-center">
+                                                    ${thumbIsImg
+                                                        ? `<img src="${ann.fileData}" alt="Poster" class="w-full h-full object-cover">`
+                                                        : thumbIsPdf
+                                                            ? `<div class="text-center text-red-600"><i class="fa-solid fa-file-pdf text-2xl"></i><span class="block text-[9px] font-bold mt-0.5">PDF</span></div>`
+                                                            : `<div class="text-center text-green-700"><i class="fa-solid fa-newspaper text-2xl"></i></div>`
+                                                    }
+                                                </div>
+                                                <div class="min-w-0 flex-1">
+                                                    <div class="flex items-center justify-between gap-2">
+                                                        <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-900">${escapeHtml(ann.category || 'Hebahan')}</span>
+                                                        <span class="text-[11px] text-gray-400">${escapeHtml(ann.postedAt || '')}</span>
+                                                    </div>
+                                                    <h4 class="font-bold text-sm text-gray-900 mt-1 line-clamp-2">${escapeHtml(ann.title)}</h4>
+                                                    <p class="text-xs text-gray-500 mt-0.5 line-clamp-1">${escapeHtml(ann.summary || ann.fileName || '')}</p>
+                                                </div>
+                                            </div>
+                                        `;
+                                    }).join('')}
+                                </div>
+
+                                <div class="lg:col-span-7 p-6 bg-slate-50/60 flex flex-col justify-between">
+                                    ${activeAnn ? `
+                                        <div>
+                                            <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+                                                <div>
+                                                    <span class="text-xs font-bold text-green-800 uppercase">${escapeHtml(activeAnn.category || 'Hebahan Rasmi')}</span>
+                                                    <h4 class="text-lg font-extrabold text-gray-900 mt-0.5">${escapeHtml(activeAnn.title)}</h4>
+                                                    <p class="text-xs text-gray-500 mt-0.5">Oleh ${escapeHtml(activeAnn.postedBy || 'COB MPHS')} • ${escapeHtml(activeAnn.postedAt || '')}</p>
+                                                </div>
+                                                <div class="flex items-center gap-2">
+                                                    <button onclick="openAnnouncementLightbox('${activeAnn.id}')" class="px-3 py-1.5 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-semibold shadow-2xs">
+                                                        <i class="fa-solid fa-expand mr-1"></i>Papar Penuh
+                                                    </button>
+                                                    ${activeAnn.fileData ? `
+                                                        <a href="${activeAnn.fileData}" download="${escapeHtml(activeAnn.fileName || 'dokumen_hebahan')}" class="px-3 py-1.5 rounded-lg bg-green-800 hover:bg-green-900 text-white text-xs font-semibold shadow-2xs">
+                                                            <i class="fa-solid fa-download mr-1"></i>Muat Turun
+                                                        </a>
+                                                    ` : ''}
+                                                    ${(currentUser.role === 'admin' || currentUser.role === 'hod' || activeAnn.createdById === currentUser.id) ? `
+                                                        <button onclick="deleteAnnouncement('${activeAnn.id}')" title="Padam Hebahan" class="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 flex items-center justify-center">
+                                                            <i class="fa-solid fa-trash-can text-xs"></i>
+                                                        </button>
+                                                    ` : ''}
+                                                </div>
+                                            </div>
+
+                                            <div class="rounded-2xl border border-gray-200 bg-white overflow-hidden shadow-xs mb-4">
+                                                ${activeAnn.fileData && isImg ? `
+                                                    <div class="bg-slate-900 flex items-center justify-center p-3">
+                                                        <img src="${activeAnn.fileData}" alt="${escapeHtml(activeAnn.title)}" onclick="openAnnouncementLightbox('${activeAnn.id}')" class="max-h-80 w-auto object-contain rounded-lg cursor-zoom-in">
+                                                    </div>
+                                                ` : activeAnn.fileData && isPdf ? `
+                                                    <iframe src="${previewUrl}" class="w-full h-80 border-0" title="${escapeHtml(activeAnn.title)}"></iframe>
+                                                ` : `
+                                                    <div class="p-6 bg-gradient-to-br from-green-900 via-green-800 to-emerald-900 text-white relative">
+                                                        <div class="flex items-center justify-between mb-4 pb-3 border-b border-white/15">
+                                                            <div class="flex items-center gap-2.5">
+                                                                <div class="w-10 h-10 bg-white rounded-xl p-1.5 flex items-center justify-center">
+                                                                    ${getLogoImgTag("max-w-full max-h-full w-auto h-auto object-contain mx-auto block")}
+                                                                </div>
+                                                                <div>
+                                                                    <p class="text-[10px] font-bold uppercase tracking-wider text-amber-300">Majlis Perbandaran Hulu Selangor</p>
+                                                                    <p class="text-xs font-bold">Bahagian Pesuruhjaya Bangunan (COB)</p>
+                                                                </div>
+                                                            </div>
+                                                            <span class="px-2.5 py-1 rounded-lg bg-white/15 text-[11px] font-semibold">${escapeHtml(activeAnn.fileName || 'Dokumen Rasmi')}</span>
+                                                        </div>
+                                                        <h5 class="text-base font-extrabold text-amber-300 mb-2">${escapeHtml(activeAnn.title)}</h5>
+                                                        <p class="text-xs sm:text-sm text-green-50 leading-relaxed">${escapeHtml(activeAnn.summary || '')}</p>
+                                                    </div>
+                                                `}
+                                            </div>
+
+                                            ${activeAnn.summary ? `<p class="text-xs sm:text-sm text-gray-600 leading-relaxed bg-white p-3.5 rounded-xl border border-gray-100">${escapeHtml(activeAnn.summary)}</p>` : ''}
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        `}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderLettersView() {
+            const years = [...new Set(letters.map(l => (l.dateReceived || '').slice(0, 4)).filter(Boolean))].sort((a, b) => b.localeCompare(a));
+            const lettersInYear = activeYearTab === 'ALL'
+                ? letters
+                : letters.filter(l => (l.dateReceived || '').startsWith(activeYearTab));
+
+            const filtered = getFilteredLetters();
+
+            return `
+                <div class="space-y-5">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                            <h2 class="text-xl font-extrabold text-gray-900">Daftar &amp; Pemantauan Surat / Notis</h2>
+                            <p class="text-xs text-gray-500">Klik ikon emel untuk menghantar notifikasi terus melalui Chrome Gmail (CC: ${DEPARTMENT_EMAIL})</p>
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <button onclick="exportLettersCSV()" class="px-4 py-2.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-xs font-bold rounded-xl shadow-2xs flex items-center gap-2">
+                                <i class="fa-solid fa-file-csv text-green-700"></i> Eksport CSV
+                            </button>
+                            <button onclick="openLetterModal()" class="px-4 py-2.5 bg-green-800 hover:bg-green-900 text-white text-xs font-bold rounded-xl shadow-sm flex items-center gap-2">
+                                <i class="fa-solid fa-plus"></i> Daftar Surat / Notis
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-2xl p-4 border border-gray-100 shadow-xs space-y-3">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="text-xs font-bold text-gray-500 uppercase mr-1">Tahun:</span>
+                            <button onclick="setYearFilter('ALL')" class="px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeYearTab === 'ALL' ? 'bg-green-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}">
+                                Semua (${letters.length})
+                            </button>
+                            ${years.map(yr => {
+                                const cnt = letters.filter(l => (l.dateReceived || '').startsWith(yr)).length;
+                                return `<button onclick="setYearFilter('${yr}')" class="px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeYearTab === yr ? 'bg-green-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}">${yr} (${cnt})</button>`;
+                            }).join('')}
+                        </div>
+
+                        <div class="flex flex-wrap items-center gap-1.5 pt-2 border-t border-gray-100">
+                            <span class="text-xs font-bold text-gray-500 uppercase mr-1">Bulan:</span>
+                            <button onclick="setMonthFilter('ALL')" class="px-2.5 py-1 rounded-lg text-xs font-semibold ${activeMonthTab === 'ALL' ? 'bg-amber-500 text-gray-950 font-bold' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}">Semua</button>
+                            ${Object.entries(MONTH_NAMES).map(([code, name]) => {
+                                const cnt = lettersInYear.filter(l => (l.dateReceived || '').slice(5, 7) === code).length;
+                                return `<button onclick="setMonthFilter('${code}')" class="px-2.5 py-1 rounded-lg text-xs font-semibold ${activeMonthTab === code ? 'bg-amber-500 text-gray-950 font-bold' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}">${name} (${cnt})</button>`;
+                            }).join('')}
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-2xl p-4 border border-gray-100 shadow-xs grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                        <div class="lg:col-span-2 relative">
+                            <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400"><i class="fa-solid fa-magnifying-glass text-xs"></i></span>
+                            <input type="text" id="filter-search" oninput="updateLetterFilters()" value="${escapeHtml(searchQuery)}" placeholder="Cari no. rujukan, tajuk, JMB, pegawai..." class="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-xl text-xs focus:ring-2 focus:ring-green-600 outline-none">
+                        </div>
+                        <select id="filter-doc-cat" onchange="updateLetterFilters()" class="px-3 py-2 border border-gray-300 rounded-xl text-xs bg-white outline-none">
+                            <option value="ALL" ${filterDocCategory === 'ALL' ? 'selected' : ''}>Semua Dokumen (Surat &amp; Notis)</option>
+                            <option value="Surat" ${filterDocCategory === 'Surat' ? 'selected' : ''}>Surat Sahaja</option>
+                            <option value="Notis" ${filterDocCategory === 'Notis' ? 'selected' : ''}>Notis Sahaja</option>
+                        </select>
+                        <select id="filter-type" onchange="updateLetterFilters()" class="px-3 py-2 border border-gray-300 rounded-xl text-xs bg-white outline-none">
+                            <option value="ALL" ${filterType === 'ALL' ? 'selected' : ''}>Semua Aliran (Masuk &amp; Keluar)</option>
+                            <option value="Masuk" ${filterType === 'Masuk' ? 'selected' : ''}>Masuk</option>
+                            <option value="Keluar" ${filterType === 'Keluar' ? 'selected' : ''}>Keluar</option>
+                        </select>
+                        <select id="filter-status" onchange="updateLetterFilters()" class="px-3 py-2 border border-gray-300 rounded-xl text-xs bg-white outline-none">
+                            <option value="ALL" ${filterStatus === 'ALL' ? 'selected' : ''}>Semua Status</option>
+                            <option value="Baru Diterima" ${filterStatus === 'Baru Diterima' ? 'selected' : ''}>Baru Diterima</option>
+                            <option value="Dalam Tindakan" ${filterStatus === 'Dalam Tindakan' ? 'selected' : ''}>Dalam Tindakan</option>
+                            <option value="Pemakluman" ${filterStatus === 'Pemakluman' ? 'selected' : ''}>Pemakluman</option>
+                            <option value="Selesai" ${filterStatus === 'Selesai' ? 'selected' : ''}>Selesai</option>
+                        </select>
+                    </div>
+
+                    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse">
+                                <thead>
+                                    <tr class="bg-gray-50 border-b border-gray-200 text-[11px] font-bold uppercase text-gray-500">
+                                        <th class="py-3.5 px-4">Dokumen &amp; Rujukan</th>
+                                        <th class="py-3.5 px-4">Perkara &amp; Pihak Terlibat</th>
+                                        <th class="py-3.5 px-4">Penyampaian &amp; Tarikh</th>
+                                        <th class="py-3.5 px-4">Piagam Pelanggan</th>
+                                        <th class="py-3.5 px-4">Pegawai &amp; Status</th>
+                                        <th class="py-3.5 px-4 text-right">Tindakan</th>
+                                    </tr>
+                                </thead>
+                                    ${filtered.map(l => {
+                                        const canEdit = canManageLetterRecord(l);
+                                        const isNotis = (l.docCategory || 'Surat') === 'Notis';
+                                        const normalizedType = l.type === 'Surat Masuk' ? 'Masuk' : (l.type === 'Surat Keluar' ? 'Keluar' : l.type);
+                                        const statusStyle = l.status === 'Selesai'
+                                            ? 'bg-emerald-100 text-emerald-800'
+                                            : l.status === 'Pemakluman'
+                                                ? 'bg-indigo-100 text-indigo-800'
+                                                : l.status === 'Dalam Tindakan'
+                                                    ? 'bg-amber-100 text-amber-800'
+                                                    : 'bg-sky-100 text-sky-800';
+                                        return `
+                                            <tr class="hover:bg-gray-50/80 transition">
+                                                <td class="py-3.5 px-4 align-top">
+                                                    <div class="flex flex-wrap items-center gap-1.5 mb-1">
+                                                        <span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase ${isNotis ? 'bg-purple-100 text-purple-800' : 'bg-green-100 text-green-800'}">
+                                                            ${escapeHtml(l.docCategory || 'Surat')}
+                                                        </span>
+                                                        <span class="px-2 py-0.5 rounded-md text-[10px] font-semibold ${normalizedType === 'Masuk' ? 'bg-blue-50 text-blue-700' : 'bg-orange-50 text-orange-700'}">
+                                                            ${escapeHtml(normalizedType)}
+                                                        </span>
+                                                    </div>
+                                                    <p class="font-bold text-gray-900">${escapeHtml(l.refNo)}</p>
+                                                    ${l.fileName ? `
+                                                        <button onclick="previewLetterAttachment('${l.id}')" class="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-green-700 hover:underline">
+                                                            <i class="fa-solid fa-paperclip"></i> ${escapeHtml(l.fileName)}
+                                                        </button>
+                                                    ` : ''}
+                                                </td>
+                                                <td class="py-3.5 px-4 align-top max-w-xs">
+                                                    <p class="font-bold text-gray-900 leading-snug">${escapeHtml(l.subject)}</p>
+                                                    <p class="text-gray-500 mt-1"><i class="fa-solid fa-building mr-1 text-gray-400"></i>${escapeHtml(l.senderReceiver)}</p>
+                                                    ${l.minute ? `<p class="text-[11px] text-amber-800 bg-amber-50/80 px-2 py-1 rounded-lg mt-1.5 border border-amber-100"><i class="fa-solid fa-note-sticky mr-1"></i>${escapeHtml(l.minute)}</p>` : ''}
+                                                </td>
+                                                <td class="py-3.5 px-4 align-top whitespace-nowrap">
+                                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-semibold text-[11px]">
+                                                        <i class="fa-solid fa-truck-fast text-slate-500"></i> ${escapeHtml(l.deliveryMethod || 'Serahan Tangan')}
+                                                    </span>
+                                                    <p class="text-gray-600 font-medium mt-1.5"><i class="fa-regular fa-calendar mr-1 text-gray-400"></i>${escapeHtml(l.dateReceived)}</p>
+                                                </td>
+                                                <td class="py-3.5 px-4 align-top whitespace-nowrap">
+                                                    ${getCharterBadge(l)}
+                                                    ${l.deadlineDate && Number(l.slaDays) > 0 ? `<p class="text-[11px] text-gray-400 mt-1">Tamat: ${escapeHtml(l.deadlineDate)}</p>` : ''}
+                                                </td>
+                                                <td class="py-3.5 px-4 align-top">
+                                                    <p class="font-bold text-gray-800">${escapeHtml(l.officer)}</p>
+                                                    <span class="inline-block mt-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${statusStyle}">${escapeHtml(l.status)}</span>
+                                                </td>
+                                                <td class="py-3.5 px-4 align-top text-right whitespace-nowrap">
+                                                    <div class="inline-flex items-center gap-1.5">
+                                                        <button onclick="notifyOfficerEmail('${l.id}')" title="Hantar Notifikasi Chrome Gmail (CC: ${DEPARTMENT_EMAIL})" class="w-8 h-8 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 flex items-center justify-center transition">
+                                                            <i class="fa-solid fa-envelope"></i>
+                                                        </button>
+                                                        ${canEdit ? `
+                                                            <button onclick="openLetterModal('${l.id}')" title="Kemaskini Rekod" class="w-8 h-8 rounded-lg bg-green-50 hover:bg-green-100 text-green-800 border border-green-200 flex items-center justify-center transition">
+                                                                <i class="fa-solid fa-pen-to-square"></i>
+                                                            </button>
+                                                            <button onclick="deleteLetter('${l.id}')" title="Padam Rekod" class="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 flex items-center justify-center transition">
+                                                                <i class="fa-solid fa-trash-can"></i>
+                                                            </button>
+                                                        ` : `
+                                                            <span title="Terkunci: Hanya pegawai bertugas atau Admin boleh kemaskini" class="px-2 py-1 rounded-lg bg-gray-100 text-gray-400 text-[10px] font-semibold inline-flex items-center gap-1">
+                                                                <i class="fa-solid fa-lock"></i> Terkunci
+                                                            </span>
+                                                        `}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderUsersView() {
+            const isAdmin = currentUser && currentUser.role === 'admin';
+            return `
+                <div class="space-y-5">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                            <h2 class="text-xl font-extrabold text-gray-900">Direktori Pegawai &amp; Kawalan Akses</h2>
+                            <p class="text-xs text-gray-500">Pegawai hanya boleh mengemaskini rekod tugasan sendiri; Mod Admin boleh mengedit pengguna &amp; menetapkan semula kata laluan.</p>
+                        </div>
+                        ${isAdmin ? `
+                            <button onclick="openUserModal()" class="px-4 py-2.5 bg-green-800 hover:bg-green-900 text-white text-xs font-bold rounded-xl shadow-sm flex items-center gap-2 self-start">
+                                <i class="fa-solid fa-user-plus"></i> Tambah Pegawai Baharu
+                            </button>
+                        ` : ''}
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        ${users.map(u => {
+                            const taskCount = letters.filter(l => l.officer === u.name).length;
+                            const roleBadge = u.role === 'admin'
+                                ? 'bg-amber-100 text-amber-900'
+                                : u.role === 'hod'
+                                    ? 'bg-purple-100 text-purple-900'
+                                    : 'bg-green-100 text-green-800';
+                            const roleLabel = u.role === 'admin' ? 'Mod Admin' : u.role === 'hod' ? 'Ketua Jabatan' : 'Pegawai COB';
+                            return `
+                                <div class="bg-white rounded-2xl p-5 border border-gray-100 shadow-xs flex flex-col justify-between">
+                                    <div>
+                                        <div class="flex items-start justify-between gap-2 mb-3">
+                                            <div class="w-11 h-11 rounded-xl bg-green-800 text-white font-extrabold flex items-center justify-center text-base">
+                                                ${escapeHtml(u.name.charAt(0).toUpperCase())}
+                                            </div>
+                                            <span class="px-2.5 py-1 rounded-full text-[11px] font-bold ${roleBadge}">${roleLabel}</span>
+                                        </div>
+                                        <h3 class="font-bold text-base text-gray-900">${escapeHtml(u.name)}</h3>
+                                        <p class="text-xs text-gray-500">${escapeHtml(u.position)}</p>
+                                        <div class="mt-3 pt-3 border-t border-gray-100 space-y-1 text-xs text-gray-600">
+                                            <p><i class="fa-solid fa-id-badge w-4 text-gray-400"></i> ID: <b>${escapeHtml(u.username)}</b></p>
+                                            <p><i class="fa-solid fa-envelope w-4 text-gray-400"></i> ${escapeHtml(u.email)}</p>
+                                            <p><i class="fa-solid fa-folder w-4 text-gray-400"></i> Tugasan Aktif/Rekod: <b>${taskCount}</b></p>
+                                            ${isAdmin ? `<p><i class="fa-solid fa-key w-4 text-amber-500"></i> Kata Laluan: <code class="bg-gray-100 px-1.5 py-0.5 rounded font-bold text-gray-800">${escapeHtml(u.password)}</code></p>` : ''}
+                                        </div>
+                                    </div>
+                                    ${isAdmin ? `
+                                        <div class="mt-4 pt-3 border-t border-gray-100 flex items-center justify-end gap-2">
+                                            <button onclick="openUserModal('${u.id}')" class="px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold">
+                                                <i class="fa-solid fa-user-pen mr-1"></i>Edit / Reset Kata Laluan
+                                            </button>
+                                            ${u.id !== currentUser.id ? `
+                                                <button onclick="deleteUser('${u.id}')" class="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 flex items-center justify-center">
+                                                    <i class="fa-solid fa-trash-can text-xs"></i>
+                                                </button>
+                                            ` : ''}
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderApp() {
+            if (!currentUser) {
+                renderLoginScreen();
+                return;
+            }
+
+            const appEl = document.getElementById('app');
+            const isAdmin = currentUser.role === 'admin';
+
+            appEl.innerHTML = `
+                <header class="bg-white border-b border-gray-200 sticky top-0 z-30">
+                    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <div ${isAdmin ? 'onclick="openLogoUploadModal()" title="Klik untuk tukar Logo Rasmi MPHS"' : ''} class="w-11 h-11 rounded-xl bg-white border border-gray-200 p-1.5 flex items-center justify-center shrink-0 ${isAdmin ? 'cursor-pointer hover:ring-2 hover:ring-green-600' : ''}">
+                                ${getLogoImgTag("max-w-full max-h-full w-auto h-auto object-contain mx-auto block")}
+                            </div>
+                            <div class="min-w-0">
+                                <div class="flex items-center gap-2">
+                                    <h1 class="font-extrabold text-sm sm:text-lg text-gray-900 truncate">SMART COB MPHS</h1>
+                                    <span class="hidden md:inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-green-100 text-green-800">v2.0</span>
+                                </div>
+                                <p class="text-[11px] text-gray-500 truncate">Bahagian Pesuruhjaya Bangunan • Majlis Perbandaran Hulu Selangor</p>
+                            </div>
+                        </div>
+
+                        <nav class="hidden md:flex items-center gap-1 bg-gray-100 p-1 rounded-xl">
+                            <button onclick="setTab('dashboard')" class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition ${activeTab === 'dashboard' ? 'bg-white text-green-800 shadow-2xs' : 'text-gray-600 hover:text-gray-900'}">
+                                <i class="fa-solid fa-chart-pie mr-1.5"></i>Dashboard
+                            </button>
+                            <button onclick="setTab('letters')" class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition ${activeTab === 'letters' ? 'bg-white text-green-800 shadow-2xs' : 'text-gray-600 hover:text-gray-900'}">
+                                <i class="fa-solid fa-envelopes-bulk mr-1.5"></i>Surat &amp; Notis
+                            </button>
+                            <button onclick="setTab('users')" class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition ${activeTab === 'users' ? 'bg-white text-green-800 shadow-2xs' : 'text-gray-600 hover:text-gray-900'}">
+                                <i class="fa-solid fa-users-gear mr-1.5"></i>Pegawai
+                            </button>
+                        </nav>
+
+                        <div class="flex items-center gap-3 shrink-0">
+                            <div class="hidden sm:block text-right">
+                                <p class="text-xs font-bold text-gray-900">${escapeHtml(currentUser.name)}</p>
+                                <p class="text-[10px] font-semibold text-green-700">${escapeHtml(currentUser.position)}</p>
+                            </div>
+                            <button onclick="handleLogout()" title="Log Keluar" class="px-3 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold transition flex items-center gap-1.5">
+                                <i class="fa-solid fa-right-from-bracket"></i> <span class="hidden sm:inline">Keluar</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="md:hidden border-t border-gray-100 px-4 py-2 flex items-center justify-around bg-gray-50">
+                        <button onclick="setTab('dashboard')" class="px-3 py-1.5 rounded-lg text-xs font-bold ${activeTab === 'dashboard' ? 'bg-green-800 text-white' : 'text-gray-600'}">
+                            <i class="fa-solid fa-chart-pie mr-1"></i>Dashboard
+                        </button>
+                        <button onclick="setTab('letters')" class="px-3 py-1.5 rounded-lg text-xs font-bold ${activeTab === 'letters' ? 'bg-green-800 text-white' : 'text-gray-600'}">
+                            <i class="fa-solid fa-envelopes-bulk mr-1"></i>Surat &amp; Notis
+                        </button>
+                        <button onclick="setTab('users')" class="px-3 py-1.5 rounded-lg text-xs font-bold ${activeTab === 'users' ? 'bg-green-800 text-white' : 'text-gray-600'}">
+                            <i class="fa-solid fa-users-gear mr-1"></i>Pegawai
+                        </button>
+                    </div>
+                </header>
+
+                <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+                    ${activeTab === 'dashboard' ? renderDashboardView() : activeTab === 'letters' ? renderLettersView() : renderUsersView()}
+                </main>
+
+                <footer class="bg-white border-t border-gray-200 py-4 px-4 text-center text-xs text-gray-500">
+                    &copy; 2026 <strong class="text-gray-700">SMART COB MPHS</strong> • Bahagian Pesuruhjaya Bangunan, Majlis Perbandaran Hulu Selangor • Emel Rasmi: <span class="text-green-800 font-semibold">${DEPARTMENT_EMAIL}</span>
+                </footer>
+            `;
+        }
+
+        // Mulakan Aplikasi
+        initApp();
+    </script>
+</body>
+</html>
